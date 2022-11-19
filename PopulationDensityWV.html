@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<html>
+    <head>
+        <style>
+            /*Basic tooltip styling*/
+            tooltip {
+                position: absolute;
+                font: 12px sans-serif;
+                background: lightgray;
+                border: 0px;
+                border-radius: 8px;
+                pointer-events: none;
+            }
+        </style>
+        <script src="https://d3js.org/d3.v6.min.js"></script>
+        <script src="https://d3js.org/topojson.v2.min.js"></script>
+        <script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
+    </head>
+    <body>
+        <h1 style = "text-align:center; color:steelblue"><bold>West Virginia 2022 Population Density Map</bold></h1>
+        <script>
+
+            // Define Margins
+            var margin = {left: 0, right: 0, top: 0, bottom: 0 }, 
+            width = 1920 - margin.left - margin.right,
+            height = 800 - margin.top - margin.bottom;
+
+            // Define SVG
+            var svg = d3.select("body")
+                .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+            // Use d3 scale chromatic schemes
+            // Source: https://github.com/d3/d3-scale-chromatic#schemeAccent
+            var color1 = d3.scaleThreshold()
+                .domain([1, 10, 50, 200, 500, 1000])
+                .range(d3.schemeOrRd[7]);
+
+            var color2 = d3.scaleThreshold()
+                .domain([1, 10, 50, 200, 500, 1000])
+                .range(d3.schemeYlGn[7]);
+
+            // Global Variable to set the color and border opacity. When button is clicked, respective variable changes
+            var color = color1;
+            var borderOpacity = 0.3;
+
+            // Using new Map objects to set density, state name and county name to id.
+            var density = new Map();
+            var state = new Map();
+            var county = new Map();
+
+            // Projection is scaled to isolate West Virginia
+            var projection = d3.geoAlbersUsa()
+                .scale(10000)
+                .translate([-1400, 600]);
+            var path = d3.geoPath()
+                .projection(projection);
+
+            // Adding Tooltip
+            var tooltip = d3.select("body").append("tooltip")
+                    .attr("class", "tooltip")
+                    .style("opacity", 0);
+
+
+            // Legend making function. Had assistance
+            function legend()
+            {
+                // Xscale
+                var x = d3.scaleSqrt()
+                    .domain([1, 1000])
+                    .rangeRound([0, 750]);
+                
+                var g = svg.append("g")
+                    .attr("class", "key")
+                    .attr("transform", "translate(" + width/5.5 + "," + 50 + ")")
+
+                // Draws out each rectangle for legend from color scheme
+                g.selectAll("rect")
+                  .data(color.range().map(function(d) {
+                      d = color.invertExtent(d);
+                      if (d[0] == null) d[0] = x.domain()[0];
+                      if (d[1] == null) d[1] = x.domain()[1];
+                      return d;
+                    }))
+                  .enter().append("rect")
+                    .attr("height", 8)
+                    .attr("x", function(d) { return x(d[0]); })
+                    .attr("width", function(d) { return x(d[1]) - x(d[0]); })
+                    .attr("fill", function(d) { return color(d[0]); });
+
+                // Number for each part of the legend
+                g.append("text")
+                    .attr("class", "caption")
+                    .attr("x", x.range()[0])
+                    .attr("y", -6)
+                    .attr("fill", "#000")
+                    .attr("text-anchor", "start")
+                    .attr("font-weight", "bold")
+                    .text("Population per square mile");
+
+                g.call(d3.axisBottom(x).tickSize(15).tickValues(color.domain()));
+            }
+            // Using values as an array to get all data gathered
+            var values = [
+                d3.json("us-10m.json"),
+                d3.csv("PopulationDensityWV.csv", function(d) {
+                    density.set(+d["GCT_STUB.target-geo-id2"], +d["Density per square mile of land area"]);
+                    state.set(+d["GCT_STUB.target-geo-id2"], d["GEO.display-label"]);
+                    county.set(+d["GCT_STUB.target-geo-id2"], d["GCT_STUB.display-label"]);
+                })
+            ];
+
+            // Source: https://developer.mozilla.org/en-US/docs/web/javascript/reference/global_objects/promise
+            // Credit to classmate for helping me with this
+            Promise.all(values).then(ready);
+
+            function ready([us]) {
+
+                // Draw Counties. Code sourced from US-Unemployment.html from canvas site
+                // Mouseover sourced from other hwks
+                svg.append("g")
+                    .attr("class", "counties")
+                    .selectAll("path")
+                    .data(topojson.feature(us, us.objects.counties).features)
+                    .enter().append("path")
+                    .filter(function(d) {return state.get(d.id) == "West Virginia";})
+                    .attr("fill", function(d) { return color(density.get(d.id)); })
+                    .attr("d", path)
+                    .on("mouseover", function(event,d) {
+                        tooltip.transition().duration(0).style("opacity", 0.9);
+                        tooltip.html(`State: West Virginia <br/> County: ${county.get(d.id)} <br/> Density: ${density.get(d.id)}` )
+                            .style("left", (event.pageX + 20) + "px")
+                            .style("top", event.pageY + "px");
+                    })
+                    .on("mousemove", function(event,d) {
+                        tooltip.transition().duration(0).style("opacity", 0.9);
+                        tooltip.html(`State: West Virginia <br/> County: ${county.get(d.id)} <br/> Density: ${density.get(d.id)}` )
+                            .style("left", (event.pageX + 20) + "px")
+                            .style("top", event.pageY + "px");
+                    })
+                    .on("mouseout", function(d) {
+                        tooltip.transition().duration(0).style("opacity", 0);
+                    });
+
+                // Create county boders
+                svg.append("path")
+                  .datum(topojson.feature(us, us.objects.counties))
+                  .attr("fill", "none")
+                  .attr("stroke", "dimgray")
+                  .attr("stroke-opacity", borderOpacity)
+                  .attr("d", path);
+
+
+                // Call legend funtion
+                legend();
+            }
+
+            // Upon button click, change the color scheme and update the drawing by being ready once again
+            function changeColor(){
+                if(color == color1){
+                    color = color2;
+                }
+                else {
+                    color = color1;
+                }
+                legend();
+                Promise.all(values).then(ready);
+            }
+
+            // Upon button click, change the boundry opacity and update the drawing by being ready once again
+            function changeBoundry(){
+                if(borderOpacity == 0) {
+                    borderOpacity = 0.3;
+                }
+                else{
+                    borderOpacity = 0;
+                }
+                Promise.all(values).then(ready);
+            }
+
+        </script>
+        <button onclick="changeColor()">Change Color</button>
+        <button onclick="changeBoundry()">Toggle County Boundary</button>
+
+        <h3>Luqman Rashad</h3>
+        <h3>Instructor: Suresh Lodha</h3>
+        <h3>CMPS 163: Data programming for Visualization</h3>
+        <h3>Fall 2022</h3>
+        
+        <h3>Files Submitted (3):</h3>
+
+        <ul>
+            <li>PopulationDensityWV.csv (renamed the provided csv file)</li>
+            <li>PopulationDensityWV.html (worked on US-unemployment so did not split into js, css and html files) </li>
+            <li>us-10m.json</li>
+        </ul>
+        
+        <h3>Sources:</h3>
+
+        <ul>
+            <li>US-Unemployment.html from canvas site for skeleton code</li>
+            <li>Help in class and from TA's</li>
+            <li>https://developer.mozilla.org/en-US/docs/web/javascript/reference/global_objects/promise</li>
+            <li>https://github.com/d3/d3-scale-chromatic#schemeAccent</li>
+            <li>https://www.educba.com/javascript-button/</li>
+            <li>https://bl.ocks.org/mbostock/5562380</li>
+        </ul>
+        
+    </body>
+</html>
+
+
+
