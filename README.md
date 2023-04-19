@@ -1,4 +1,4 @@
-A visualization of the data may be accessed using the following link: https://luqmanrashad.github.io/Geomapping-Data-Visualization/
+A visualization of the data may be accessed using the following link: https://luqmanrashad.github.io/GeomappingPopulationDensity/
 
 Or you can view the page by clicking github pages on the main repository page, and then selecting view deployment
 
